@@ -1,0 +1,12 @@
+{
+	"name": "to-lit",
+	"type": "module",
+	"bin": "./bin.ts",
+	"dependencies": {
+		"typescript": "^4"
+	},
+	"devDependencies": {
+		"@types/node": "^20.14.11",
+		"tsx": "^4.16.5"
+	}
+}

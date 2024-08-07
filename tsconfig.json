@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "target": "ESNext",
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "sourceMap": true,
+    "allowSyntheticDefaultImports": true,
+    "noImplicitAny": true,
+    "esModuleInterop": true
+  },
+  "include": [
+    "./bin.ts",
+    "./index.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/node_modules/*"
+  ],
+  "ts-node": {
+    "esm": true,
+    "files": true,
+    "transpileOnly": true,
+    "experimentalResolver": true,
+    "experimentalSpecifierResolution": "node"
+  }
+}
