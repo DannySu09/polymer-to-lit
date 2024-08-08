@@ -8,15 +8,11 @@
       "name": "ts-node",
       "type": "node",
       "request": "launch",
-      "runtimeExecutable": "node",
+      "runtimeExecutable": "tsx",
       "runtimeArgs": [
         "--inspect",
-        "--loader",
-        "ts-node/esm"
-      ],
-      "args": [
-        "${workspaceFolder}/bin.ts",
-        "demo/paper-button.js"
+        "bin.ts",
+        "demo/index.ts"
       ],
       "cwd": "${workspaceFolder}",
       "internalConsoleOptions": "openOnSessionStart",

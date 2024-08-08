@@ -1,119 +1,101 @@
-import * as ts from 'typescript';
+import fs from "node:fs";
+import ts from 'typescript';
 
-function findClassInAST(node: ts.Node): ts.ClassDeclaration | undefined {
-    if (ts.isClassDeclaration(node)) {
-        return node;
+function extractTemplateLiteralContent(node: ts.GetAccessorDeclaration): string | undefined {
+    if (node.body) {
+        for (const statement of node.body.statements) {
+            if (ts.isReturnStatement(statement)) {
+                const returnExpression = statement.expression;
+                if (returnExpression && ts.isTemplateExpression(returnExpression)) {
+                    return returnExpression.head.text + returnExpression.templateSpans
+                        .map(span => `${span.expression.getText()}${span.literal.text}`)
+                        .join('');
+                }
+            }
+        }
     }
+}
 
-    let foundClass: ts.ClassDeclaration | undefined;
+function extractPropertiesContent(node: ts.GetAccessorDeclaration): ts.Node {
+    if (node.body) {
+        for(const statement of node.body.statements) {
+            if (ts.isReturnStatement(statement)) {
+                const returnExpression = statement.expression;
 
-    ts.forEachChild(node, child => {
-        if (!foundClass) {
-            foundClass = findClassInAST(child);
+                if (returnExpression && ts.isObjectLiteralExpression(returnExpression)) {
+                    return returnExpression;
+                }
+            }
+        }
+    }
+}
+
+function deletePropertyFromClass(node: ts.ClassDeclaration, propertyNameToDelete: string): ts.ClassDeclaration {
+    const updatedMembers = node.members.filter(member => {
+        if (ts.isPropertyDeclaration(member) && ts.isIdentifier(member.name)) {
+            return member.name.text !== propertyNameToDelete;
+        }
+        return true;
+    });
+
+    return ts.factory.updateClassDeclaration(
+        node,
+        node.modifiers,
+        node.name,
+        node.typeParameters,
+        node.heritageClauses,
+        updatedMembers
+    );
+}
+
+function transformASTToCode(node: ts.Node): string {
+    const printer = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed });
+    const resultFile = ts.createSourceFile(
+        "output.ts",
+        "",
+        ts.ScriptTarget.Latest,
+        false,
+        ts.ScriptKind.TS
+    );
+    return printer.printNode(ts.EmitHint.Unspecified, node, resultFile);
+}
+
+
+export function transform(filePath: string) {
+    const code = fs.readFileSync(filePath, { encoding: "utf8" });
+    // Create a source file
+    const sourceFile = ts.createSourceFile(
+        filePath,
+        code,
+        ts.ScriptTarget.Latest,
+        true
+    );
+
+    ts.forEachChild(sourceFile, node => {
+        if (ts.isClassDeclaration(node)) {
+            for (const member of node.members) {
+                if (ts.isGetAccessorDeclaration(member)) {
+                    const memberName = member.name?.getText();
+                    if (memberName === "template") {
+                        const templateText = extractTemplateLiteralContent(member);
+                    } else if (memberName === "properties") {
+
+                    }
+                } else if (ts.isPropertyDeclaration(member) &&
+                    ts.isIdentifier(member.name) &&
+                    member.name.text === 'properties') {
+
+                    if (member.initializer && ts.isObjectLiteralExpression(member.initializer)) {
+                        return member.initializer;
+                    }
+                }
+            }
         }
     });
 
-    return foundClass;
+    const transformedCode = transformASTToCode(sourceFile);
+    const litFilePath = filePath.replace(".ts", ".lit.ts");
+
+    fs.writeFileSync(litFilePath, transformedCode);
 }
 
-function findPropertiesInClass(classNode: ts.ClassDeclaration): ts.Node | undefined {
-    for (const member of classNode.members) {
-        if (ts.isPropertyDeclaration(member) &&
-            ts.isIdentifier(member.name) &&
-            member.name.text === 'properties') {
-
-            if (member.initializer && ts.isObjectLiteralExpression(member.initializer)) {
-                return member.initializer;
-            }
-        }
-    }
-    return undefined;
-}
-
-function transformPropertyToClassMember(propertiesNode: ts.ObjectLiteralExpression): ts.ClassElement[] {
-    const newMembers: ts.ClassElement[] = [];
-
-    for (const property of propertiesNode.properties) {
-        if (ts.isPropertyAssignment(property) && ts.isIdentifier(property.name)) {
-            const propertyName = property.name.text;
-            const propertyValue = property.initializer;
-
-            if (ts.isObjectLiteralExpression(propertyValue)) {
-                let type: ts.Expression | undefined;
-                let value: ts.Expression | undefined;
-
-                for (const prop of propertyValue.properties) {
-                    if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
-                        if (prop.name.text === 'type') {
-                            type = prop.initializer;
-                        } else if (prop.name.text === 'value') {
-                            value = prop.initializer;
-                        }
-                    }
-                }
-
-                if (type) {
-                    const decorator = ts.factory.createDecorator(
-                        ts.factory.createCallExpression(
-                            ts.factory.createIdentifier('property'),
-                            undefined,
-                            [ts.factory.createObjectLiteralExpression([
-                                ts.factory.createPropertyAssignment('type', type)
-                            ])]
-                        )
-                    );
-
-                    const newProperty = ts.factory.createPropertyDeclaration(
-                        [decorator],
-                        propertyName,
-                        undefined,
-                        undefined,
-                        value
-                    );
-
-                    newMembers.push(newProperty);
-                }
-            }
-        }
-    }
-
-    return newMembers;
-}
-
-function transformClassProperties(sourceFile: ts.SourceFile): ts.SourceFile {
-    function visit(node: ts.Node): ts.Node {
-        if (ts.isClassDeclaration(node)) {
-            const propertiesNode = findPropertiesInClass(node);
-            if (propertiesNode && ts.isObjectLiteralExpression(propertiesNode)) {
-                const newMembers = transformPropertyToClassMember(propertiesNode);
-                return ts.factory.updateClassDeclaration(
-                    node,
-                    node.modifiers,
-                    node.name,
-                    node.typeParameters,
-                    node.heritageClauses,
-                    [...node.members, ...newMembers]
-                );
-            }
-        }
-        return ts.visitEachChild(node, visit);
-    }
-
-    return ts.visitNode(sourceFile, visit) as ts.SourceFile;
-}
-
-
-
-
-function transformToAST(code: string): ts.Node {
-  // Create a source file
-  const sourceFile = ts.createSourceFile(
-    'temp.ts',
-    code,
-    ts.ScriptTarget.Latest,
-    true
-  );
-
-  // Return the AST
-  return sourceFile;
-}
