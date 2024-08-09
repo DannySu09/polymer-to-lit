@@ -16,18 +16,48 @@ function extractTemplateLiteralContent(node: ts.GetAccessorDeclaration): string 
     }
 }
 
-function extractPropertiesContent(node: ts.GetAccessorDeclaration): ts.Node {
+function findObjectLiteralInGetAccessor(node: ts.GetAccessorDeclaration): ts.ObjectLiteralExpression | undefined {
     if (node.body) {
-        for(const statement of node.body.statements) {
-            if (ts.isReturnStatement(statement)) {
-                const returnExpression = statement.expression;
-
-                if (returnExpression && ts.isObjectLiteralExpression(returnExpression)) {
-                    return returnExpression;
+        for (const statement of node.body.statements) {
+            if (ts.isReturnStatement(statement) && statement.expression) {
+                if (ts.isObjectLiteralExpression(statement.expression)) {
+                    return statement.expression;
                 }
             }
         }
     }
+
+    return undefined;
+}
+
+function addPropertyWithDecorator(node: ts.ClassDeclaration, propertyName: string, propertyType: ts.KeywordTypeSyntaxKind): ts.ClassDeclaration {
+    const decoratorFactory = ts.factory.createDecorator(
+        ts.factory.createCallExpression(
+            ts.factory.createIdentifier('property'),
+            undefined,
+            []
+        )
+    );
+
+    const newProperty = ts.factory.createPropertyDeclaration(
+        [decoratorFactory],
+        undefined,
+        ts.factory.createIdentifier(propertyName),
+        undefined,
+        ts.factory.createKeywordTypeNode(propertyType),
+        undefined
+    );
+
+    const updatedMembers = [...node.members, newProperty];
+
+    return ts.factory.updateClassDeclaration(
+        node,
+        node.modifiers,
+        node.name,
+        node.typeParameters,
+        node.heritageClauses,
+        updatedMembers
+    );
 }
 
 function deletePropertyFromClass(node: ts.ClassDeclaration, propertyNameToDelete: string): ts.ClassDeclaration {
@@ -79,7 +109,13 @@ export function transform(filePath: string) {
                     if (memberName === "template") {
                         const templateText = extractTemplateLiteralContent(member);
                     } else if (memberName === "properties") {
+                        const objectLiteral = findObjectLiteralInGetAccessor(member);
 
+                        if (objectLiteral) {
+                            for(const property of objectLiteral.properties) {
+
+                            }
+                        }
                     }
                 } else if (ts.isPropertyDeclaration(member) &&
                     ts.isIdentifier(member.name) &&
